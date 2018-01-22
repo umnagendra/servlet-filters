@@ -3,7 +3,6 @@ package com.umnagendra.filter;
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -27,46 +26,44 @@ public class RequestDumperFilter implements Filter {
 
     public static final String INIT_PARAM_METHODS           = "methods";
     public static final String INIT_PARAM_HEADERS           = "dumpHeaders";
-
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd-MM-yyyy (z) HH:mm:ss.SSS");
+    public static final String INIT_PARAM_PAYLOAD           = "dumpPayload";
 
     private static final Logger logger = Logger.getLogger(RequestDumperFilter.class.getName());
 
     private List<String> methodList;
     private boolean dumpHeaders;
+    private boolean dumpPayload;
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
         dumpHeaders = Boolean.valueOf(filterConfig.getInitParameter(INIT_PARAM_HEADERS));
+        dumpPayload = Boolean.valueOf(filterConfig.getInitParameter(INIT_PARAM_PAYLOAD));
 
         String methods = filterConfig.getInitParameter(INIT_PARAM_METHODS);
         if (methods != null && !methods.isEmpty()) {
             methodList = Arrays.asList(methods.trim().split("\\s*,\\s*"));
         }
 
-        logger.info("Initialized. [dumpHeaders = " + dumpHeaders + "], methods = [" + methodList + "]");
+        logger.info("Initialized. dumpHeaders = [" + dumpHeaders + "], dumpPayload = [" + dumpPayload + "], methods = [" + methodList + "]");
     }
 
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain)
             throws IOException, ServletException {
+        RequestWrapper httpRequest = new RequestWrapper((HttpServletRequest) servletRequest);
         try {
             if (servletRequest instanceof HttpServletRequest) {
-                HttpServletRequest httpRequest = (HttpServletRequest) servletRequest;
-
                 if (methodList == null || methodList.contains(httpRequest.getMethod().toUpperCase())) {
                     System.out.println(createDump(httpRequest));
                 } else {
                     logger.fine("Received a request with method = " + httpRequest.getMethod() + ", skipping dump.");
                 }
-            } else {
-                logger.fine("Received a request that is *NOT* HTTP. Doing nothing.");
             }
         } catch (Exception e) {
             e.printStackTrace();
             logger.severe("Something bad happened. Exception = [" + e.getMessage() + "], check STDOUT for stack trace");
         } finally {
-            filterChain.doFilter(servletRequest, servletResponse);
+            filterChain.doFilter(httpRequest, servletResponse);
         }
     }
 
@@ -75,19 +72,15 @@ public class RequestDumperFilter implements Filter {
         logger.info("Destroyed");
     }
 
-    private String createDump(HttpServletRequest request) {
+    private String createDump(RequestWrapper request) {
         return String.format(DUMP_FORMAT,
-                getCurrentTimestamp(),
+                DumperUtil.getCurrentTimestamp(),
                 request.getMethod(),
                 request.getRequestURI(),
                 request.getQueryString(),
                 dumpHeaders ? createHeaderSection(request) : "",
-                extractPayload(request)
+                dumpPayload ? request.getPayload() : ""
         );
-    }
-
-    private String getCurrentTimestamp() {
-        return DATE_FORMAT.format(new Date());
     }
 
     private String createHeaderSection(HttpServletRequest request) {
@@ -104,11 +97,6 @@ public class RequestDumperFilter implements Filter {
             logger.fine("No request headers found. [SESSION-ID: " + request.getSession().getId() + "]");
         }
 
-        return "";
-    }
-
-    private String extractPayload(HttpServletRequest request) {
-        // TODO
         return "";
     }
 }
